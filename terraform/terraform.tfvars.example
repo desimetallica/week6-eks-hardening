@@ -1,0 +1,27 @@
+# ──────────────────────────────────────────────────────────────
+# Copy this file to terraform.tfvars and fill in your values.
+# NEVER commit terraform.tfvars to source control.
+# ──────────────────────────────────────────────────────────────
+
+aws_region   = "eu-south-1"
+environment  = "lab"
+cluster_name = "eks-hardening-lab"
+
+kubernetes_version = "1.31"
+
+vpc_cidr             = "10.0.0.0/16"
+private_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+public_subnet_cidrs  = ["10.0.101.0/24", "10.0.102.0/24"]
+
+node_instance_type = "t3.medium"
+node_desired_size  = 2
+node_min_size      = 1
+node_max_size      = 3
+node_disk_size_gb  = 20
+
+# IMPORTANT: replace with your actual IP to restrict API server access
+# allowed_cidr_blocks = ["<YOUR_IP>/32"]
+allowed_cidr_blocks = ["0.0.0.0/0"]
+
+kms_key_deletion_window_days = 7
+log_retention_days           = 30

@@ -1,0 +1,140 @@
+# =============================================================================
+# Terraform
+# =============================================================================
+
+# Local .terraform directories
+**/.terraform/
+
+# Terraform lock file (commit this if you want reproducible provider versions)
+# .terraform.lock.hcl
+
+# Terraform state files
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Terraform plan files
+*.tfplan
+plan.log
+*.plan
+
+# Terraform variable files with secrets
+*.tfvars
+!*.tfvars.example
+
+# Terraform crash logs
+crash.log
+crash.*.log
+
+# Terraform override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform CLI config
+.terraformrc
+terraform.rc
+
+# =============================================================================
+# Ansible
+# =============================================================================
+
+# Retry files
+*.retry
+
+# Ansible vault password files
+.vault_pass
+.vault_password
+vault_password_file
+*.vault
+
+# Dynamic inventory cache
+*.cache
+inventory/cache/
+
+# Roles installed via requirements.yml
+roles/galaxy/
+roles/external/
+
+# Ansible logs
+ansible.log
+*.log
+
+# Temporary playbook artifacts
+.ansible/
+
+# =============================================================================
+# AWS / Cloud credentials
+# =============================================================================
+
+.aws/
+*.pem
+*.key
+*.p12
+*.pfx
+kubeconfig
+kubeconfig-*
+*-kubeconfig
+kube_config_cluster.yml
+
+# =============================================================================
+# Secrets & sensitive files
+# =============================================================================
+
+.env
+.env.*
+!.env.example
+secrets/
+*.secret
+*.secrets
+credentials.json
+service-account.json
+
+# =============================================================================
+# Editor & OS
+# =============================================================================
+
+# VSCode
+.vscode/
+!.vscode/extensions.json
+
+# JetBrains IDEs
+.idea/
+*.iml
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# =============================================================================
+# Misc
+# =============================================================================
+
+# Python (scripts/helpers)
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Node (if any tooling)
+node_modules/
+
+# Zip/archive artifacts
+*.zip
+*.tar.gz
+*.tar.bz2
