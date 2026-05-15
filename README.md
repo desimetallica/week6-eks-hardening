@@ -191,41 +191,6 @@ terraform destroy
 
 ---
 
-## Next Steps
-
-These controls are intentionally left for the next lab iteration:
-
-### Lab Exercises
-
-1. **IRSA (IAM Roles for Service Accounts)**
-   Create a workload-specific IAM role using the OIDC provider ARN output. Deploy a pod that assumes it via a projected service account token and verify it cannot access other AWS resources.
-
-2. **Pod Security Standards (PSS)**
-   Enable Kubernetes Pod Security Admission at the namespace level. Label a namespace with `pod-security.kubernetes.io/enforce: restricted` and observe which pod specs are rejected.
-
-3. **Kubernetes Network Policies**
-   Install a CNI that supports NetworkPolicy (e.g. Calico). Create deny-all ingress/egress policies per namespace and whitelist only required paths.
-
-4. **Secrets Manager Integration**
-   Deploy the AWS Secrets Manager CSI driver. Mount a secret as a file instead of a Kubernetes Secret to remove plaintext secrets from etcd entirely.
-
-5. **Runtime Threat Detection**
-   Deploy [Falco](https://falco.org/) via Helm and trigger a rule (e.g. spawn a shell inside a container). Review alerts in CloudWatch.
-
-6. **Image Security**
-   Enable ECR enhanced scanning (Inspector). Build and push an intentionally vulnerable image, review findings, and block deployment using an admission webhook.
-
-### Infrastructure Improvements
-
-- [ ] Move Terraform state to S3 + DynamoDB (remote backend with locking)
-- [ ] Enable Amazon GuardDuty with EKS audit log protection
-- [ ] Add a private NAT Gateway per AZ for HA
-- [ ] Disable the public API endpoint and introduce a bastion / VPN for cluster access
-- [ ] Pin the EKS node AMI version for reproducible deployments
-- [ ] Add a `cluster-autoscaler` IRSA role for automatic node scaling
-- [ ] Add OPA Gatekeeper or Kyverno for policy enforcement at admission time
-
----
 
 ## References
 

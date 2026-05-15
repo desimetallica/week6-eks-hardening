@@ -16,6 +16,7 @@
 
 data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
+data "aws_region" "current" {}
 
 # ──────────────────────────────────────────────────────────────
 # KMS key — Kubernetes Secrets encryption at rest
@@ -85,18 +86,43 @@ resource "aws_kms_key" "ebs" {
         Resource = "*"
       },
       {
-        Sid    = "AllowEC2Service"
+        Sid    = "AllowEBSUseFromThisAccountViaEC2"
         Effect = "Allow"
-        Principal = { Service = "ec2.amazonaws.com" }
+        Principal = { AWS = "*" }
         Action = [
           "kms:Encrypt",
           "kms:Decrypt",
           "kms:ReEncrypt*",
           "kms:GenerateDataKey*",
-          "kms:CreateGrant",
           "kms:DescribeKey"
         ]
         Resource = "*"
+        Condition = {
+          StringEquals = {
+            "kms:CallerAccount" = data.aws_caller_identity.current.account_id,
+            "kms:ViaService"    = "ec2.${data.aws_region.current.name}.amazonaws.com"
+          }
+        }
+      },
+      {
+        Sid    = "AllowEBSGrantsForAWSResources"
+        Effect = "Allow"
+        Principal = { AWS = "*" }
+        Action = [
+          "kms:CreateGrant",
+          "kms:ListGrants",
+          "kms:RevokeGrant"
+        ]
+        Resource = "*"
+        Condition = {
+          Bool = {
+            "kms:GrantIsForAWSResource" = true
+          }
+          StringEquals = {
+            "kms:CallerAccount" = data.aws_caller_identity.current.account_id,
+            "kms:ViaService"    = "ec2.${data.aws_region.current.name}.amazonaws.com"
+          }
+        }
       }
     ]
   })
