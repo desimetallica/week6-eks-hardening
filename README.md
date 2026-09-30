@@ -191,6 +191,193 @@ terraform destroy
 
 ---
 
+## Multi-namespace workload 
+
+This chapter uses custom namespaces to explore three controls: network policies, and namespace/RBAC isolation. 
+
+### 1 — Network Policies
+
+Namespaces do not isolate pod traffic by themselves. By default, pods can reach pods
+in other namespaces. A NetworkPolicy only changes that behavior when the cluster's
+network plugin enforces it. On EKS, check that the Amazon VPC CNI add-on supports
+network policies and that network policy enforcement is enabled before relying on
+any of these rules. Check `kubectl config current-context` and the AWS account/region
+before running the commands; use a disposable lab cluster or namespaces for this exercise.
+
+Check the available namespaces and policies (the names and ages will differ):
+
+```bash
+kubectl get namespaces
+kubectl -n network-lab-a get networkpolicies
+kubectl -n network-lab-a describe networkpolicy default-deny-all
+```
+
+The last two commands return `NotFound` until the lab policies exist. `describe`
+shows the selected pods, allowed ingress/egress peers and ports, and policy types.
+
+Create two isolated namespaces and a web endpoint in each. The short-lived probe
+pods below use the same BusyBox image as the web pods.
+
+```bash
+kubectl create namespace network-lab-a
+kubectl create namespace network-lab-b
+kubectl -n network-lab-a run web --image=busybox:1.36 --labels=app=web -- /bin/httpd -f -p 8080
+kubectl -n network-lab-b run web --image=busybox:1.36 --labels=app=web -- /bin/httpd -f -p 8080
+kubectl -n network-lab-a expose pod web --name=web --port=8080
+kubectl -n network-lab-b expose pod web --name=web --port=8080
+kubectl -n network-lab-a wait --for=condition=Ready pod/web --timeout=120s
+kubectl -n network-lab-b wait --for=condition=Ready pod/web --timeout=120s
+```
+
+Before applying policies, confirm that a probe in A can reach B. BusyBox `httpd`
+may return 404 for `/`, which still proves that the connection succeeded; a timeout
+is the result to look for after isolation.
+
+```bash
+kubectl -n network-lab-a run probe --image=busybox:1.36 --labels=app=probe --restart=Never --command -- sleep 3600
+kubectl -n network-lab-b run probe --image=busybox:1.36 --labels=app=probe --restart=Never --command -- sleep 3600
+kubectl -n network-lab-a wait --for=condition=Ready pod/probe --timeout=120s
+kubectl -n network-lab-b wait --for=condition=Ready pod/probe --timeout=120s
+kubectl -n network-lab-a exec probe -- wget -S -O /dev/null -T 3 http://web.network-lab-b.svc.cluster.local:8080/ 2>&1
+kubectl -n network-lab-b exec probe -- wget -S -O /dev/null -T 3 http://web.network-lab-a.svc.cluster.local:8080/ 2>&1
+```
+
+Apply the following policies in **each** lab namespace. The default policy selects
+all pods and denies both ingress and egress. Policies are additive: the DNS policy
+restores name resolution, and the intra-namespace policy restores local pod traffic
+without opening cross-namespace access. Save the manifest as
+`network-lab-policies.yaml`, then apply it twice with the namespace flag.
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
+```
+
+```bash
+kubectl -n network-lab-a apply -f network-lab-policies.yaml
+kubectl -n network-lab-b apply -f network-lab-policies.yaml
+kubectl -n network-lab-a get networkpolicies
+kubectl -n network-lab-a describe networkpolicy default-deny-all
+kubectl -n network-lab-a exec probe -- nslookup web.network-lab-b.svc.cluster.local
+kubectl -n network-lab-a exec probe -- wget -S -O /dev/null -T 3 http://web.network-lab-a.svc.cluster.local:8080/ 2>&1
+kubectl -n network-lab-a exec probe -- wget -S -O /dev/null -T 3 http://web.network-lab-b.svc.cluster.local:8080/ 2>&1
+kubectl -n network-lab-b exec probe -- wget -S -O /dev/null -T 3 http://web.network-lab-b.svc.cluster.local:8080/ 2>&1
+kubectl -n network-lab-b exec probe -- wget -S -O /dev/null -T 3 http://web.network-lab-a.svc.cluster.local:8080/ 2>&1
+```
+
+DNS should resolve, same-namespace requests should connect (a 404 is fine), and
+cross-namespace requests should time out in both directions. If they respond, check CNI enforcement and policy
+selectors; simply creating a NetworkPolicy does not guarantee isolation. Check
+the actual CoreDNS pod labels with `kubectl -n kube-system get pods --show-labels`
+if DNS fails. On clusters where DNS uses NodeLocal DNSCache, the DNS policy must
+also allow the cache's IP and port.
+
+For a real workload, add only the required paths: egress from the calling pods
+**and** ingress to the destination pods, scoped to their namespace/pod labels and
+ports. For example, permit an application to reach only its required database
+endpoint and port, not all internet destinations. Standard NetworkPolicy supports
+CIDRs (`ipBlock`), not DNS names: Atlas hostnames and IPs can change, so use a
+controlled egress gateway/proxy or another policy engine that supports FQDN rules
+when stable CIDRs are unavailable. Permit ingress from an ingress-controller pod
+only when traffic actually originates from that pod; an AWS ALB can send traffic
+directly to targets, so validate the real source path, health checks, and security
+groups before defining ALB access. Avoid a broad `0.0.0.0/0` egress exception.
+
+The Terraform in this repository does **not** currently manage the `vpc-cni`
+add-on or enable its network policy feature. Inspect the live add-on before testing:
+
+```bash
+aws eks describe-addon --cluster-name eks-hardening-lab --addon-name vpc-cni \
+  --region eu-south-1 --query 'addon.{status:status,version:addonVersion,configuration:configurationValues}'
+```
+
+If it is already managed elsewhere, update that configuration instead of creating
+a second Terraform owner. Otherwise, after checking version compatibility and
+the add-on's existing configuration, an add-on managed by this root module could
+enable enforcement with:
+
+```hcl
+resource "aws_eks_addon" "vpc_cni" {
+  cluster_name = module.eks.cluster_name
+  addon_name   = "vpc-cni"
+
+  configuration_values = jsonencode({
+    enableNetworkPolicy = "true"
+  })
+}
+```
+
+For a temporary **EKS-managed add-on not owned by Terraform**, after checking its
+version and existing settings, the CLI can set the same configuration. If
+`describe-addon` returns `ResourceNotFoundException`, this update command does not
+apply: first determine whether the CNI is self-managed or needs an EKS add-on
+installed. Do not use this command to
+override an add-on owned by Terraform or to discard other configuration values:
+
+```bash
+aws eks update-addon --cluster-name eks-hardening-lab --addon-name vpc-cni \
+  --region eu-south-1 --configuration-values '{"enableNetworkPolicy":"true"}'
+```
+
+Verify the add-on is healthy and the network policy agent is running on the
+nodes before repeating the connectivity test. Clean up the disposable lab after testing:
+
+```bash
+kubectl delete namespace network-lab-a network-lab-b
+```
+
+**Conclusion:** for workloads, the practical benefit ot use NetPol is limiting a compromised pod to its documented dependencies and ports, rather than letting it freely contact every pod in the cluster. That helps contain lateral movement and some network-based command-and-control; of course it is not a substitute for runtime protection, patching, authentication, or application-level authorization.
+
+
+
+
+---
+
 
 ## References
 
